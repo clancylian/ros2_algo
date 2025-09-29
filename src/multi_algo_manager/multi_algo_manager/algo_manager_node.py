@@ -1,0 +1,72 @@
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+from multi_algo_interfaces.srv import AlgoControl
+from multi_algo_manager.algos.trash_detect import TrashDetect
+from multi_algo_manager.algos.device_check import DeviceCheck
+from multi_algo_manager.algos.channel_monitor import ChannelMonitor
+from multi_algo_manager.algos.line_integrity import LineIntegrity
+
+class AlgoManagerNode(Node):
+    def __init__(self):
+        super().__init__('algo_manager_node')
+
+        # 算法实例，默认不启动
+        self.algos = {
+            'TrashDetect': TrashDetect(),
+            'DeviceCheck': DeviceCheck(),
+            'ChannelMonitor': ChannelMonitor(),
+            'LineIntegrity': LineIntegrity(),
+        }
+
+        # Service 控制
+        self.control_service = self.create_service(
+            AlgoControl,
+            'algo_control',
+            self.handle_algo_control
+        )
+        self.get_logger().info("AlgoManagerNode started with service: algo_control")
+
+        # 统一结果发布 Topic
+        self.result_pub = self.create_publisher(String, 'algo_result', 10)
+        self.timer = self.create_timer(1.0, self.publish_results)
+
+    def handle_algo_control(self, request, response):
+        algo_name = request.algo_name
+        action = request.action.lower()
+        algo = self.algos.get(algo_name)
+
+        if not algo:
+            response.success = False
+            response.message = f"No such algorithm: {algo_name}"
+            return response
+
+        if action == 'start':
+            algo.start()
+            response.success = True
+            response.message = f"{algo_name} started"
+        elif action == 'stop':
+            algo.stop()
+            response.success = True
+            response.message = f"{algo_name} stopped"
+        else:
+            response.success = False
+            response.message = f"Unknown action: {action}"
+        return response
+
+    def publish_results(self):
+        for algo in self.algos.values():
+            result = algo.process()
+            if result:
+                msg = String()
+                msg.data = result
+                self.result_pub.publish(msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = AlgoManagerNode()
+    try:
+        rclpy.spin(node)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
