@@ -2,3 +2,11 @@
 /install
 /build
 /log
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Model files
+/src/multi_algo_manager/models/

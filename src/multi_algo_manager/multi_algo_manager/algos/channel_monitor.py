@@ -1,39 +1,43 @@
 import time
-import threading
 from std_msgs.msg import String
-import rclpy
-from rclpy.node import Node
+from .base import AlgoBase
 
-class ChannelMonitor(Node):
+class ChannelMonitor(AlgoBase):
+    """
+    通道监测算法，用于监测通道拥堵情况
+    """
     def __init__(self):
-        super().__init__('ChannelMonitor')
-        self.pub = self.create_publisher(String, '/algo_result/channel_monitor', 10)
-        self.running = False
-        self.thread = None
-
-    def start(self):
-        if not self.running:
-            self.running = True
-            self.thread = threading.Thread(target=self.run_analysis, daemon=True)
-            self.thread.start()
-            self.get_logger().info("ChannelMonitor started")
-
-    def stop(self):
-        if self.running:
-            self.running = False
-            if self.thread:
-                self.thread.join(timeout=2.0)
-            self.get_logger().info("ChannelMonitor stopped")
+        """
+        初始化通道监测算法
+        """
+        super().__init__('ChannelMonitor', '/algo_result/channel_monitor')
 
     def run_analysis(self):
-        while self.running:
-            msg = String()
-            msg.data = f"ChannelMonitor result at {time.time()}"
-            self.pub.publish(msg)
-            time.sleep(1)
+        """
+        通道监测算法主循环，定期发布监测结果
+        """
+        while not self._should_stop():
+            try:
+                msg = String()
+                msg.data = f"ChannelMonitor result at {time.time()}"
+                self.pub.publish(msg)
+                # 更新心跳，表示算法正常运行
+                self._last_heartbeat = time.time()
+                time.sleep(self._polling_interval)
+            except Exception as e:
+                self.elogger.error(f"Error in ChannelMonitor analysis: {str(e)}")
+                # 短暂暂停后继续，避免快速失败
+                time.sleep(0.1)
 
     def process(self):
-        if self.running:
+        """
+        获取通道监测算法的当前状态
+        
+        Returns:
+            str: 算法运行状态信息
+        """
+        state = self.get_state()
+        if state['running']:
             return f"ChannelMonitor running at {time.time()}"
         return None
 
