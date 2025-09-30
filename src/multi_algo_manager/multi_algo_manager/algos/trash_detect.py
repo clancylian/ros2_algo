@@ -1,7 +1,10 @@
 import time
 import rclpy
+import json
 from std_msgs.msg import String
 import cv2
+import base64
+import numpy as np
 from .base import AlgoBase
 
 VIDEO_PATH = "/public/lgl/20250916_152719.mp4"
@@ -91,11 +94,41 @@ class TrashDetect(AlgoBase):
             while not self._should_stop():
                 try:
                     # 执行具体的垃圾检测算法
-                    detection_result = self.perform_trash_detection()
+                    detection_result, frame = self.perform_trash_detection()
                     
                     # 创建并发布消息
                     msg = String()
-                    msg.data = f"TrashDetect result: {detection_result} at {time.time()}"
+                    
+                    # 获取当前时间戳
+                    timestamp = time.time()
+                    
+                    # 将图像转换为base64
+                    if frame is not None:
+                        # 确保图像是RGB格式
+                        if len(frame.shape) == 3 and frame.shape[2] == 3:
+                            # 已经是RGB格式
+                            pass
+                        elif len(frame.shape) == 2:
+                            # 灰度图转换为RGB
+                            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+                        
+                        # 编码为JPEG
+                        _, buffer = cv2.imencode('.jpg', frame)
+                        # 转换为base64
+                        image_base64 = base64.b64encode(buffer).decode('utf-8')
+                    else:
+                        image_base64 = ""
+                    
+                    # 构造包含三个主要字段的JSON消息
+                    message_data = {
+                        "image_base64": image_base64,
+                        "timestamp": timestamp,
+                        "algo_name": "TrashDetect",
+                        "detection_result": detection_result
+                    }
+                    #self.elogger.info(f"Detection result: {message_data}")
+                    
+                    msg.data = json.dumps(message_data)
                     self.pub.publish(msg)
                     
                     # 记录检测结果日志
@@ -144,12 +177,12 @@ class TrashDetect(AlgoBase):
         具体的垃圾检测算法实现，使用YOLOv8进行目标检测
         
         Returns:
-            str: 检测结果描述
+            tuple: (检测结果描述, 处理后的图像)
         """
         # 确保资源已初始化
         if not self.initialized:
             if not self._initialize_resources():
-                return "Initialization failed"
+                return "Initialization failed", None
         
         try:
             # 读取一帧视频
@@ -160,17 +193,21 @@ class TrashDetect(AlgoBase):
                 self.elogger.warning("Failed to read frame, trying to reopen video capture")
                 self.cap.release()
                 self.cap = cv2.VideoCapture(VIDEO_PATH)
-                return "Failed to read frame"
+                return "Failed to read frame", None
             
             # 增加帧计数器
             self.frame_counter += 1
             
             # 每20帧处理一次，减少计算量
             if self.frame_counter % 20 != 0:
-                return "Skipping frame"
+                pass
+                #return "Skipping frame", frame
             
             # 运行YOLOv8推理
             results = self.model(frame, conf=0.1)
+            
+            # 在图像上绘制检测结果
+            annotated_frame = results[0].plot()
             
             # 获取检测结果
             detected_objects = []
@@ -193,11 +230,11 @@ class TrashDetect(AlgoBase):
                         detected_objects.append(
                             f"{class_name} at ({center_x}, {center_y}) with confidence {confidence:.2f}")
             
-            # 如果有检测到物体，返回格式化的结果
+            # 如果有检测到物体，返回格式化的结果和带标注的图像
             if detected_objects:
-                return f"Detected {len(detected_objects)} objects: {', '.join(detected_objects)}"
+                return f"Detected {len(detected_objects)} objects: {', '.join(detected_objects)}", annotated_frame
             else:
-                return "No objects detected"
+                return "No objects detected", frame
             
         except Exception as e:
             self.elogger.error(f"Error during trash detection: {str(e)}")

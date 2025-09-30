@@ -241,3 +241,14 @@ rqt
 6. 通过Topic订阅获取算法结果
 
 这个系统可以帮助您灵活地管理多个算法，按需启动和停止，同时获取实时的算法运行结果。
+
+
+colcon build --packages-select multi_algo_interfaces
+source install/setup.bash
+ros2 interface show multi_algo_interfaces/srv/AlgoControl
+
+colcon build --packages-select multi_algo_manager --symlink-install
+source install/setup.bash
+ros2 launch multi_algo_manager multi_algo_manager.launch.py
+ros2 service call /algo_control multi_algo_interfaces/srv/AlgoControl "{algo_name: 'TrashDetect', action: 'start'}"
+ros2 topic echo /algo_result

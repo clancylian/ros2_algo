@@ -60,7 +60,7 @@ class AlgoBase(Node):
                 self.elogger.info(f"started with polling interval: {self._polling_interval}s")
                 return True
             else:
-                self.elogger.debug("is already running")
+                self.elogger.info("is already running")
                 return False
 
     def stop(self):
@@ -79,7 +79,7 @@ class AlgoBase(Node):
                 self.elogger.info("stopped")
                 return True
             else:
-                self.elogger.debug("is not running")
+                self.elogger.info("is not running")
                 return False
 
     def _should_stop(self):
